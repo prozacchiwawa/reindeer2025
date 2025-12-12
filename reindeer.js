@@ -381,15 +381,30 @@ class ReindeerGame {
     this.clickListener = (evt) => {
       this.midi = this.loadMidi(ode_to_joy);
       this.msPerTick = 1.0;
+      this.timeSignatureDenominator = 2;
+      this.metronomeTicks = 24;
+      this.notesPerBeat = 8;
+      this.microsecondsPerQuarter = 0x0927c0;
       for (let i = 0; i < this.midi.track[0].event.length; i++) {
         const event = this.midi.track[0].event[i];
+        console.log(event);
+        if (event.metaType == 0x51) {
+          this.microsecondsPerQuarter = event.data;
+        }
         if (event.metaType == 0x58) {
-          const timeSignatureDenominator = event.data[1];
-          const metronomeTicks = event.data[2];
-          const notesPerBeat = event.data[3];
-          this.msPerTick = 1.5625;
+          this.timeSignatureDenominator = event.data[1];
+          this.metronomeTicks = event.data[2];
+          this.notesPerBeat = event.data[3];
         }
       }
+      this.microsecondsPerMinute = 60 * 1000 * 1000;
+      this.tempo = this.microsecondsPerMinute / this.microsecondsPerQuarter;
+      this.bpm = this.microsecondsPerMinute / this.tempo;
+      this.divisions = this.notesPerBeat;
+      this.ticksPerMinute = this.bpm * this.divisions;
+      this.tickDuration = 60 / this.ticksPerMinute;
+      this.msPerTick = 100000.0 * this.tickDuration;
+
       const noteUpdaters = [];
       const notes = [46, 50, 54, 58, 62, 66, 70, 74, 78];
       const colors = ["#e6261f", "#eb7532", "#f7d038", "#a3e048", "#49da9a", "#34bbe6", "#4355db", "#d23be7"];
