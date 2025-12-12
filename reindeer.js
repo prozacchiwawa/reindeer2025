@@ -367,7 +367,7 @@ class ReindeerGame {
     this.paused = false;
     this.maxPresents = 80;
     this.renderFunc = () => this.showLoading();
-    this.presentSpawner = new PresentSpawner('present.png', 650, 40, this.maxPresents, 300, 500);
+    this.presentSpawner = new PresentSpawner('present.png', 650, 40, this.maxPresents, 1200, 500);
     let imagekeys = Object.keys(this.images);
     Promise.all(imagekeys.map((i) => {
       return this.loadImage(i);
