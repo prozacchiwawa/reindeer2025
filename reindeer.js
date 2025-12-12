@@ -364,6 +364,7 @@ class ReindeerGame {
     this.time = 0;
     this.midi = { track: [] };
     this.score = 0;
+    this.countdown = 0;
     this.paused = false;
     this.maxPresents = 80;
     this.renderFunc = () => this.showLoading();
@@ -404,6 +405,7 @@ class ReindeerGame {
       this.ticksPerMinute = this.bpm * this.divisions;
       this.tickDuration = 60 / this.ticksPerMinute;
       this.msPerTick = 100000.0 * this.tickDuration;
+      this.countdown = 750;
 
       const noteUpdaters = [];
       const notes = [46, 50, 54, 58, 62, 66, 70, 74, 78];
@@ -539,6 +541,10 @@ class ReindeerGame {
     if (this.paused) {
       this.time = now;
       this.showPaused();
+    } else if (this.countdown > 0) {
+      const interval = now - this.time;
+      this.time = now;
+      this.countdown -= interval;
     } else {
       const interval = now - this.time;
       this.time = now;
