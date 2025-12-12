@@ -86,7 +86,8 @@ class Reindeer {
 };
 
 class NoteUpdater {
-  constructor(track, note, color, x, y) {
+  constructor(msPerDelta, track, note, color, x, y) {
+    this.msPerDelta = msPerDelta;
     this.noteTime = 0;
     this.note = note;
     this.activation = 0;
@@ -99,6 +100,7 @@ class NoteUpdater {
     this.color = color;
     this.x = x;
     this.y = y;
+    console.log('msPerDelta', this.msPerDelta);
   }
 
   render(game) {
@@ -112,7 +114,7 @@ class NoteUpdater {
 
     this.shootReindeer = false;
     this.time += interval;
-    while (this.pointer < this.track.event.length && this.noteTime + this.track.event[this.pointer].deltaTime < this.time) {
+    while (this.pointer < this.track.event.length && this.noteTime + this.track.event[this.pointer].deltaTime * this.msPerDelta < this.time) {
       this.pointer += 1;
       updated = true;
       this.noteTime = this.time;
@@ -145,21 +147,23 @@ class NoteUpdater {
 };
 
 class Cannon {
-  constructor(notes, x, y) {
+  constructor(image, notes, x, y) {
+    this.image = image;
     this.x = x;
     this.y = y;
+    this.r = 0;
+    this.rTarget = 0;
     this.notes = notes;
   }
 
   render(game) {
-    const ctx = game.getContext();
-    ctx.fillStyle = '#888';
-    game.drawCircle({ x: this.x, y: this.y, r: 15.0 });
+    canvasRenderPositionOrientation(game, this);
   }
 
   update(game, idx, interval) {
     for (let i = 0; i < this.notes.length; i++) {
       if (this.notes[i].shootReindeer) {
+        this.rTarget = i * -8;
         const noteTargetX = this.notes[i].x;
         const noteTargetY = this.notes[i].y;
         const targetMomentumX = (noteTargetX - this.x) * 0.01;
@@ -167,6 +171,11 @@ class Cannon {
         const reindeerSpinner = new Spinner(targetMomentumX, targetMomentumY, 1.0, 0.02);
         game.newObject(new Reindeer('reindeer.png', this.x, this.y, 270 * Math.random(), reindeerSpinner));
       }
+    }
+    if (this.r > this.rTarget) {
+      this.r -= 0.1 * interval;
+    } else if (this.r < this.rTarget) {
+      this.r += 0.1 * interval;
     }
   }
 
@@ -347,40 +356,68 @@ class ReindeerGame {
     this.images = {
       "reindeer.png": null,
       "plank.png": null,
-      "present.png": null
+      "present.png": null,
+      "cannon.png": null
     };
     this.expectedImages = Object.keys(this.images).length;
     this.objects = [];
     this.time = 0;
     this.midi = { track: [] };
     this.score = 0;
-    this.maxPresents = 70;
+    this.paused = false;
+    this.maxPresents = 80;
     this.renderFunc = () => this.showLoading();
     this.presentSpawner = new PresentSpawner('present.png', 650, 40, this.maxPresents, 300, 500);
     let imagekeys = Object.keys(this.images);
     Promise.all(imagekeys.map((i) => {
       return this.loadImage(i);
     })).then(() => {
+      this.renderFunc = () => this.clickToStart();
+    });
+    this.pauseListener = (evt) => {
+      this.paused = !this.paused;
+      this.midiElement.dispatchEvent(new Event('click'));
+    };
+    this.clickListener = (evt) => {
       this.midi = this.loadMidi(ode_to_joy);
+      this.msPerTick = 1.0;
+      for (let i = 0; i < this.midi.track[0].event.length; i++) {
+        const event = this.midi.track[0].event[i];
+        if (event.metaType == 0x58) {
+          const timeSignatureDenominator = event.data[1];
+          const metronomeTicks = event.data[2];
+          const notesPerBeat = event.data[3];
+          this.msPerTick = 1.5625;
+        }
+      }
       const noteUpdaters = [];
       const notes = [46, 50, 54, 58, 62, 66, 70, 74, 78];
       const colors = ["#e6261f", "#eb7532", "#f7d038", "#a3e048", "#49da9a", "#34bbe6", "#4355db", "#d23be7"];
       for (let i = 0; i < notes.length; i++) {
         console.log('midi track', this.midi.track[1]);
-        const note = new NoteUpdater(this.midi.track[1], notes[i], colors[i], 50 + 75 * i, 320);
+        const note = new NoteUpdater(this.msPerTick, this.midi.track[1], notes[i], colors[i], 50 + 75 * i, 320);
         noteUpdaters.push(note);
         this.newObject(note);
       }
 
       const reindeerSpinner = new Spinner(-0.1, 1.0, 1.0, 0.02);
       this.newObject(new Reindeer('reindeer.png', 400, 30, 5, reindeerSpinner));
-      this.newObject(new Cannon(noteUpdaters, 600, 100));
+      this.newObject(new Cannon('cannon.png', noteUpdaters, 600, 100));
       this.newObject(new Seesaw('plank.png', this.canvas, 600, 320));
       this.newObject(this.presentSpawner);
 
       this.time = (new Date().getTime());
       this.renderFunc = () => this.render();
-    });
+      this.canvas.removeEventListener('click', this.clickListener);
+      this.midiElement = document.createElement("midi-player");
+      this.midiElement.setAttribute('src', 'data:audio/midi;base64,' + ode_to_joy);
+      this.midiElement.addEventListener('load', () => {
+        this.midiElement.dispatchEvent(new Event('click'));
+      });
+      this.hidden.appendChild(this.midiElement);
+      this.canvas.addEventListener('click', this.pauseListener);
+    };
+    this.canvas.addEventListener('click', this.clickListener);
   }
 
   loadMidi(midiData) {
@@ -421,7 +458,7 @@ class ReindeerGame {
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  drawClock() {
+  drawScore() {
     this.ctx.fillStyle = '#fff';
     this.drawCircle({ x: 50, y: 50, r: 23 });
     this.ctx.fillStyle = '#f33';
@@ -453,14 +490,25 @@ class ReindeerGame {
     }
   }
 
-  showLoading() {
+  showText(loadingMsg) {
     this.ctx.font = "48px serif";
     this.ctx.fillStyle = '#fff';
-    const loadingMsg = `Loading ${this.loadedImages+1}/${this.expectedImages}`;
     const measured = this.ctx.measureText(loadingMsg);
     const x = (this.canvas.width - measured.width) / 2;
     const y = this.canvas.height / 2;
     this.ctx.fillText(loadingMsg, x, y);
+  }
+
+  showLoading() {
+    this.showText(`Loading ${this.loadedImages+1}/${this.expectedImages}`);
+  }
+
+  showPaused() {
+    this.showText('Paused');
+  }
+
+  clickToStart() {
+    this.showText('Click to Start!');
   }
 
   kill(idx) {
@@ -473,12 +521,17 @@ class ReindeerGame {
 
   rerender() {
     const now = new Date().getTime();
-    const interval = now - this.time;
-    this.time = now;
-    this.objects.forEach((o, i) => o.update(this, i, interval));
-    this.clear();
-    this.renderFunc();
-    this.drawClock();
+    if (this.paused) {
+      this.time = now;
+      this.showPaused();
+    } else {
+      const interval = now - this.time;
+      this.time = now;
+      this.objects.forEach((o, i) => o.update(this, i, interval));
+      this.clear();
+      this.renderFunc();
+      this.drawScore();
+    }
     window.requestAnimationFrame(() => this.rerender());
   }
 };
